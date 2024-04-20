@@ -1,0 +1,368 @@
+---
+title: "**Final year project**"
+subtitle: "*GEN data analysis*"
+author: "1931391"
+date: "`r Sys.Date()`"
+date-format: "YYYY.MM.DD"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+# [1]{style="color:grey"} Integrate datasets
+## [1.1]{style="color:grey"} Load the datasets
+```{r, results='hide', message=FALSE, warning=FALSE}
+rm(list=ls())
+rawdata_combined_1 <- read.table("PRJNA615032 (GSE147507)/GENDX000181_GeneMatrix_rawCounts.txt", header = TRUE, row.names = 1)
+rawdata_combined_2 <- read.table("PRJNA634167 (GSE150962)/GENDX000481_GeneMatrix_rawCounts.txt", header = TRUE, row.names = 1)
+```
+## [1.2]{style="color:grey"} Combine the datasets
+```{r, results='hide', message=FALSE, warning=FALSE}
+rawdata_combined <- merge(rawdata_combined_1, rawdata_combined_2, by = "row.names", all = FALSE)
+rownames(rawdata_combined) <- rawdata_combined$Row.names
+rawdata_combined$Row.names <- NULL
+# Remove rows with NA values
+rawdata_combined <- na.omit(rawdata_combined)
+# Filter the dataset
+selected_columns <- c(1:5, 12, 31:36)
+rawdata_combined <- rawdata_combined[, selected_columns]
+```
+## [1.3]{style="color:grey"} Define group & batch variable
+```{r, results='hide', message=FALSE, warning=FALSE}
+group <- c(rep("Normal", 2), 
+           rep("SARS-CoV-2 infection", 3), 
+           rep("Normal", 4), 
+           rep("SARS-CoV-2 infection", 3))
+batch <- c(rep("GSE147507", 6), rep("GSE150962", 6))
+```
+## [1.4]{style="color:grey"} Save the combined dataset as `Rdata`
+```{r, results='hide', message=FALSE, warning=FALSE}
+save(rawdata_combined, group, batch, file = "GEN.Rdata")
+```
+
+# [2]{style="color:grey"} Adjust for batch effects
+## [2.1]{style="color:grey"} Load the datasets
+```{r, results='hide', message=FALSE, warning=FALSE}
+rm(list=ls())
+pkgs <- c('sva', 'ggplot2', 'RUVSeq','edgeR',"dplyr","pheatmap","ggsci",
+          "ggplotify","reshape2","EDASeq","RColorBrewer","cluster","ggvenn")
+ins <- lapply(pkgs, library, character.only = TRUE)
+load("GEN.Rdata")
+```
+## [2.2]{style="color:grey"} ComBat adjustment
+```{r, results='hide', message=FALSE, warning=FALSE}
+ComBat_res <- function(Data, batch, group){
+  Data <- as.matrix(Data)
+  Data <- Data[apply(Data, 1, var) > 1, ]   # Remove genes with too low variance
+  Data <- Data[complete.cases(Data), ]   # Remove missing value
+  batch <- as.factor(batch)
+  mod <- model.matrix(~group)
+  adjusted <- ComBat(dat = Data, batch = batch, mod = mod, par.prior = TRUE, prior.plots = FALSE)
+  return(adjusted)
+}
+rawdata_combined_ComBat <- ComBat_res(rawdata_combined, batch, group)
+```
+## [2.3]{style="color:grey"} ComBat-seq adjustment
+```{r, results='hide', message=FALSE, warning=FALSE}
+ComBatseq_res <- function(Data, batch, group){
+  Data <- as.matrix(Data)
+  batch <- as.factor(batch)
+  adjusted <- ComBat_seq(counts = Data, batch = batch, group = group)
+  return(adjusted)
+}
+rawdata_combined_ComBatseq <- ComBatseq_res(rawdata_combined, batch, group)
+```
+## [2.4]{style="color:grey"} RUVg adjustment
+```{r, results='hide', message=FALSE, warning=FALSE}
+RUVg_res <- function(Data,group,ref = NULL,k = NULL, t){
+  x <- as.factor(group)
+  # least significantly DE genes based 
+  # on a first-pass DE analysis performed prior to RUVg normalization
+  # DE analysis ,top 500 genes
+  if(is.null(ref)){
+    design <- model.matrix(~x,data=Data)
+    y <- DGEList(counts=Data,group = x)
+    y <- calcNormFactors(y, method="upperquartile")
+    y <- estimateGLMCommonDisp(y, design)
+    y <- estimateGLMTagwiseDisp(y, design)
+    fit <- glmFit(y, design)
+    lrt <- glmLRT(fit, coef=2)
+    top <- topTags(lrt, n=nrow(Data))$table
+    ref <- rownames(Data)[which(!(rownames(Data) %in% rownames(Data)[1:500]))]
+    set <- newSeqExpressionSet(as.matrix(Data),phenoData=data.frame(x,row.names=colnames(Data)))
+  }
+  if(is.null(k)){
+    # calculating the number of surrogate variables
+    k = sva::num.sv(dat = Data, mod = design,method = "be") 
+  }
+  adjusted_1 <- RUVg(set,ref,k=k)
+  adjusted_2 <- RUVg(as.matrix(Data),ref,k=k,isLog = F)
+  if(t=="set"){
+    return(adjusted_1)
+  }else{
+    return(adjusted_2)
+  }
+}
+rawdata_combined_filt <- rawdata_combined[which(apply(rawdata_combined,1,function(x)length(x[x>5])>=2)),]
+# Return newSeqExpressionSet
+rawdata_combined_RUVg <- RUVg_res(rawdata_combined_filt, group, ref = NULL, k = 2, "set")
+# Return gene expression matrix
+rawdata_combined_RUVg_temp <- RUVg_res(rawdata_combined_filt, group, ref = NULL, k = 2, "matrix")
+gene_expression_matrix_RUVg <- rawdata_combined_RUVg_temp$normalizedCounts
+```
+## [2.5]{style="color:grey"} RUVs adjustment
+```{r, results='hide', message=FALSE, warning=FALSE}
+RUVs_res <- function(Data, group, ref = NULL, k = NULL, t){
+  x <- as.factor(group)
+  if(is.null(ref)){
+    design <- model.matrix(~x, data=Data)
+    y <- DGEList(counts=Data, group = x)
+    y <- calcNormFactors(y, method="upperquartile")
+    y <- estimateGLMCommonDisp(y, design)
+    y <- estimateGLMTagwiseDisp(y, design)
+    fit <- glmFit(y, design)
+    lrt <- glmLRT(fit, coef=2)
+    top <- topTags(lrt, n=nrow(Data))$table
+    ref <- rownames(Data)[which(!(rownames(Data) %in% rownames(Data)[1:500]))]
+    set <- newSeqExpressionSet(as.matrix(Data),phenoData=data.frame(x,row.names=colnames(Data)))
+  }
+  if(is.null(k)){
+    k = sva::num.sv(dat = Data, mod = design, method = "be") 
+  }
+  differences <- makeGroups(as.factor(group))  # a matrix to specifying the replicates
+  adjusted_1 <- RUVs(set, ref, k, differences,isLog = F)
+  adjusted_2 <- RUVs(as.matrix(Data), ref, k, differences, isLog = F)
+  if(t=="set"){
+    return(adjusted_1)
+  }else{
+    return(adjusted_2)
+  }
+}
+rawdata_combined_filt <- rawdata_combined[which(apply(rawdata_combined,1,function(x)length(x[x>5])>=2)),]
+# Return newSeqExpressionSet
+rawdata_combined_RUVs <- RUVs_res(rawdata_combined_filt, group, ref = NULL, k = 2, "set")
+# Return gene expression matrix
+rawdata_combined_RUVs_temp <- RUVs_res(rawdata_combined_filt, group, ref = NULL, k = 2, "matrix")
+gene_expression_matrix_RUVs <- rawdata_combined_RUVs_temp$normalizedCounts
+```
+## [2.6]{style="color:grey"} RLE plot
+```{r, results='hide', message=FALSE, warning=FALSE}
+RLEplotfunction <- function(Data,group,batch,method,version){
+  Data <- as.matrix(Data)
+  plotname <-paste0(getwd(),"/",version,"_RLEplot(",method,")",".pdf",sep = "")
+  pdf(plotname,width = 12.0, height = 6.0)
+  n.batch <- nlevels(as.factor(batch))
+  nbatch <- as.factor(batch)
+  colors <- brewer.pal(n.batch, "Accent")
+  plotRLE(Data,col = colors[nbatch],ann=T,xaxt="n",main=method)
+  dev.off()
+}
+version <- "GEN"
+RLEplotfunction(rawdata_combined,group,batch,"rawcount",version)
+RLEplotfunction(rawdata_combined_ComBat, group, batch, "ComBat", version)
+RLEplotfunction(rawdata_combined_ComBatseq, group, batch, "ComBat_seq", version)
+RLEplotfunction(gene_expression_matrix_RUVg,group,batch,"RUVg",version)
+RLEplotfunction(gene_expression_matrix_RUVs,group,batch,"RUVs",version)
+```
+## [2.7]{style="color:grey"} PCA
+```{r, results='hide', message=FALSE, warning=FALSE}
+pca_correctedfunction <- function(Data,batch,group,method,version){
+  pca_corrected_obj = prcomp(Data)
+  pca.var = pca_corrected_obj$sdev^2 %>% as.data.frame()
+  pca.var$var = round(pca.var$. / sum(pca.var) * 100, 2)
+  pca_corrected = as.data.frame(pca_corrected_obj[2]$rotation)
+  #assign labels to the data frame
+  pca_corrected[,"group"] = group
+  pca_corrected[,"batch"] = batch
+  plotname <-paste0(getwd(),"/",version,"_PCA(",method,")",".png",sep = "")
+  png(file=plotname,width=3000,height=2000,res=72*5)
+  batch <- as.factor(batch)
+  p2 = ggplot(data=pca_corrected, aes(x=PC1, y=PC2, color=batch, shape=group))
+  p2 = p2 + geom_point(size=3)
+  titlename <- paste0(method)
+  p2 = p2 + labs(title=titlename, color="batch", shape="group",
+                 x= paste('PC1(', pca.var$var[1],'%)', sep = ''),
+                 y= paste('PC2(', pca.var$var[2],'%)', sep = ''))
+  plot(p2)
+  dev.off()
+  return(p2)
+}
+version <- "GEN"
+rawcount_pca <- pca_correctedfunction(rawdata_combined,batch,group,"rawcount",version)
+rawcount_ComBat_pca <- pca_correctedfunction(rawdata_combined_ComBat, batch, group, "ComBat", version)
+rawcount_ComBatseq_pca <- pca_correctedfunction(rawdata_combined_ComBatseq, batch, group, "ComBatseq",version)
+RUVg_pca <- pca_correctedfunction(gene_expression_matrix_RUVg,batch,group,"RUVg",version)
+RUVs_pca <- pca_correctedfunction(gene_expression_matrix_RUVs,batch,group,"RUVs",version)
+```
+## [2.8]{style="color:grey"} Save datasets as Rdata
+```{r, results='hide', message=FALSE, warning=FALSE}
+save(rawdata_combined, rawdata_combined_RUVg, rawdata_combined_RUVs, rawdata_combined_ComBat, 
+     rawdata_combined_ComBatseq, gene_expression_matrix_RUVg, gene_expression_matrix_RUVs,
+     group, batch, file = "GEN_after.Rdata")
+```
+
+# [3]{style="color:grey"} Downstream analysis
+## [3.1]{style="color:grey"} Load and preprocess the datasets
+```{r, results='hide', message=FALSE, warning=FALSE}
+rm(list=ls())
+pkgs <- c('ggrepel', 'ggrepel', 'ggplot2','ggrepel','pheatmap','clusterProfiler',
+          'EnsDb.Hsapiens.v79','org.Hs.eg.db', 'DESeq2', 'edgeR')
+ins <- lapply(pkgs, library, character.only = TRUE)
+load("GEN_after.Rdata")
+
+run_DE_analysis <- function(data, group, design_formula) {
+  design <- model.matrix(as.formula(design_formula), data = pData(data))
+  y <- DGEList(counts = counts(data), group = as.factor(group))
+  y <- calcNormFactors(y, method = "upperquartile")
+  y <- estimateGLMCommonDisp(y, design)
+  y <- estimateGLMTagwiseDisp(y, design)
+  fit <- glmFit(y, design)
+  lrt <- glmLRT(fit, coef = 2)
+  return(lrt$table)
+}
+run_DE_analysis_with_gene_matrix <- function(gene_matrix, group, design_formula) {
+  design <- model.matrix(as.formula(design_formula))
+  gene_matrix[gene_matrix < 0] <- 0
+  y <- DGEList(counts = gene_matrix, group = as.factor(group))
+  y <- calcNormFactors(y, method = "upperquartile")
+  y <- estimateGLMCommonDisp(y, design)
+  y <- estimateGLMTagwiseDisp(y, design)
+  fit <- glmFit(y, design)
+  lrt <- glmLRT(fit, coef = 2)
+  return(lrt$table)
+}
+df_RUVg <- run_DE_analysis(rawdata_combined_RUVg, group, "~ x + W_1")
+df_RUVg_matrix <- run_DE_analysis_with_gene_matrix(gene_expression_matrix_RUVg, group, "~group")
+df_RUVs <- run_DE_analysis(rawdata_combined_RUVs, group, "~ x + W_1")
+df_RUVs_matrix <- run_DE_analysis_with_gene_matrix(gene_expression_matrix_RUVs, group, "~group")
+df_raw <- run_DE_analysis_with_gene_matrix(rawdata_combined, group, "~group")
+df_ComBat <- run_DE_analysis_with_gene_matrix(rawdata_combined_ComBat, group, "~group")
+df_ComBatseq <- run_DE_analysis_with_gene_matrix(rawdata_combined_ComBatseq, group, "~group")
+```
+## [3.2]{style="color:grey"} Volcano plot
+```{r, results='hide', message=FALSE, warning=FALSE}
+generate_volcano_plot <- function(Data, group) {
+  data_name <- gsub("df_", "", deparse(substitute(Data)))
+  Data <- Data[complete.cases(Data$gene_name, Data$logFC, Data$PValue),]
+  Data$group <- ifelse(Data$logFC >= 3 & Data$PValue <= 0.05, "Up", 
+                       ifelse(Data$logFC <= -3 & Data$PValue <= 0.05, "Down", "Not sig"))
+  Data$gene_name <- row.names(Data)
+  Data$logp <- -log10(Data$PValue)
+  volcano_plot <- ggplot(Data, aes(x=logFC, y=logp)) + 
+    geom_point(aes(color=group)) +
+    scale_color_manual(values=c("dodgerblue", "gray", "firebrick")) +
+    geom_vline(xintercept = 3, linetype = "dashed") +
+    geom_vline(xintercept = -3, linetype = "dashed") +
+    geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
+    geom_label_repel(data=subset(Data, group!="Not sig"),
+                     aes(label=gene_name), 
+                     box.padding = unit(0.35, "lines"),
+                     size = 2) +
+    labs(title = data_name, y=expression(-log10), x="log(Fold Change)") + 
+    theme_test()
+  ggsave(paste0("GEN_Volcano_plot(", data_name, ").png"), plot = volcano_plot)
+}
+generate_volcano_plot(df_raw, group)
+generate_volcano_plot(df_ComBat, group)
+generate_volcano_plot(df_ComBatseq, group)
+generate_volcano_plot(df_RUVg, group)
+generate_volcano_plot(df_RUVs, group)
+```
+## [3.3]{style="color:grey"} Differential expression genes information
+```{r, results='hide', message=FALSE, warning=FALSE}
+export_DE_genes <- function(Data) {
+  data_name <- gsub("df_", "", deparse(substitute(Data)))
+  Data$gene_name <- row.names(Data)
+  Data$group <- ifelse(Data$logFC >= 3 & Data$PValue <= 0.05, "Up", 
+                       ifelse(Data$logFC <= -3 & Data$PValue <= 0.05, "Down", "Not sig"))
+  # Up-regulated
+  up_genes <- Data[Data$group == 'Up', ]
+  up_genes <- up_genes[, c("gene_name", "logFC", "logCPM", "LR", "PValue", "group")]
+  csv_filename_up <- paste("GEN_up-regulate(", data_name, ").csv", sep = "")
+  write.csv(up_genes, file = csv_filename_up, row.names = FALSE)
+  # Down-regulated
+  down_genes <- Data[Data$group == 'Down', ]
+  down_genes <- down_genes[, c("gene_name", "logFC", "logCPM", "LR", "PValue", "group")]
+  csv_filename_down <- paste("GEN_down-regulate(", data_name, ").csv", sep = "")
+  write.csv(down_genes, file = csv_filename_down, row.names = FALSE)
+}
+export_DE_genes(df_raw)
+export_DE_genes(df_ComBat)
+export_DE_genes(df_ComBatseq)
+export_DE_genes(df_RUVg)
+export_DE_genes(df_RUVs)
+```
+## [3.4]{style="color:grey"} Heatmap
+```{r, results='hide', message=FALSE, warning=FALSE}
+generate_heatmap <- function(Data, xdata, group, batch) {
+  data_name <- gsub("(df_|_matrix$)", "", deparse(substitute(Data)))
+  # Data$group <- ifelse(Data$logFC>=3&Data$PValue<=0.05, "Up", ifelse(Data$logFC<=-3&Data$PValue<=0.05, "Down", "Not sig"))
+  # Data$gene_name <- row.names(Data)
+  # Data <- Data[complete.cases(Data$gene_name, Data$logFC, Data$PValue),]
+  # top_genes <- head(Data$gene_name[order(Data$PValue)], 200)
+  dds <- DESeqDataSetFromMatrix(countData = round(xdata), colData = data.frame(group=group), design = ~ group)
+  dds <- estimateSizeFactors(dds)
+  dds <- DESeq(dds)
+  res <- results(dds)
+  top_genes <- head(rownames(res)[order(res$pvalue)], 200)
+  title <- data_name
+  annotation_c <- data.frame(group, batch)
+  gene_expression_matrix <- as.matrix(xdata)
+  rownames(annotation_c) <- colnames(gene_expression_matrix)
+  pheatmap(gene_expression_matrix[top_genes, ],
+           annotation_col = annotation_c,
+           annotation_legend = TRUE,
+           show_rownames = FALSE,
+           show_colnames = TRUE,
+           scale = "row",
+           color = colorRampPalette(c("navy", "white", "firebrick3"))(100),
+           annotation_colors = list(batch = c("GSE147507" = "#FFC0CB", "GSE150962" = "#87CEEB"), 
+                                    group = c("Normal" = "#f4f0e6", "SARS-CoV-2 infection" = "#d9d9f3")),
+           main = title, 
+           filename = paste0("GEN_Heatmap(", data_name, ").png"))
+}
+df_raw_raw <- rawdata_combined
+df_raw_raw[df_raw_raw<0] <- 0
+df_ComBat_raw <- rawdata_combined_ComBat
+df_ComBat_raw[df_ComBat_raw<0] <- 0
+df_ComBatseq_raw <- rawdata_combined_ComBatseq
+df_ComBatseq_raw[df_ComBatseq_raw<0] <- 0
+df_RUVg_raw <- gene_expression_matrix_RUVg
+df_RUVg_raw[df_RUVg_raw<0] <- 0
+df_RUVs_raw <- gene_expression_matrix_RUVs
+df_RUVs_raw[df_RUVs_raw<0] <- 0
+generate_heatmap(df_raw, df_raw_raw, group, batch)
+generate_heatmap(df_ComBat, df_ComBat_raw, group, batch)
+generate_heatmap(df_ComBatseq, df_ComBatseq_raw, group, batch)
+generate_heatmap(df_RUVg, df_RUVg_raw, group, batch)
+generate_heatmap(df_RUVs, df_RUVs_raw, group, batch)
+```
+## [3.5]{style="color:grey"} GO enrichment analysis
+```{r, results='hide', message=FALSE, warning=FALSE}
+perform_GO_enrichment_analysis <- function(Data) {
+  data_name <- gsub("(df_|_raw$)", "", deparse(substitute(Data)))
+  gene_names <- sapply(strsplit(rownames(Data), "_"), "[", 1)
+  keys <- bitr(gene_names, fromType = "GENEID", toType = "SYMBOL", OrgDb = EnsDb.Hsapiens.v79)
+  ego <- enrichGO(gene = keys$SYMBOL,
+                  OrgDb = org.Hs.eg.db,
+                  keyType = "SYMBOL",
+                  ont = "BP",
+                  pAdjustMethod = "BH",
+                  qvalueCutoff = 0.05,
+                  readable = TRUE)
+  plot <- dotplot(ego, showCategory = 30, font.size = 5)
+  plot <- plot + theme(axis.text.y = element_text(hjust = 1))
+  ggsave(paste0("GEN_GO_bubble_plot(", data_name, ").png"), plot = plot, width = 10, height = 6, units = "in")
+}
+perform_GO_enrichment_analysis(df_raw_raw)
+perform_GO_enrichment_analysis(df_ComBat_raw)
+perform_GO_enrichment_analysis(df_ComBatseq_raw)
+perform_GO_enrichment_analysis(df_RUVg_raw)
+perform_GO_enrichment_analysis(df_RUVs_raw)
+```
+
+# [SessionInfo]{style="color:green"}
+```{r, echo=FALSE}
+sessionInfo()
+```
