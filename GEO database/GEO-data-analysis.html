@@ -9,9 +9,9 @@
 <meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
 
 
-<meta name="author" content="1931391" />
+<meta name="author" content="TC-tea" />
 
-<meta name="date" content="2024-04-20" />
+<meta name="date" content="2024-05-03" />
 
 <title>Final year project</title>
 
@@ -352,8 +352,8 @@ display: none;
 
 <h1 class="title toc-ignore"><strong>Final year project</strong></h1>
 <h3 class="subtitle"><em>GEO data analysis</em></h3>
-<h4 class="author">1931391</h4>
-<h4 class="date">2024-04-20</h4>
+<h4 class="author">TC-tea</h4>
+<h4 class="date">2024-05-03</h4>
 
 </div>
 
@@ -366,7 +366,7 @@ display: none;
 <li><a href="#define-group-batch-variable" id="toc-define-group-batch-variable"><span style="color:grey">1.3</span>
 Define group &amp; batch variable</a></li>
 <li><a href="#save-the-combined-dataset-as-rdata" id="toc-save-the-combined-dataset-as-rdata"><span style="color:grey">1.4</span> Save the combined dataset as
-<code>Rdata</code></a></li>
+Rdata</a></li>
 </ul></li>
 <li><a href="#adjust-for-batch-effects" id="toc-adjust-for-batch-effects"><span style="color:grey">2</span>
 Adjust for batch effects</a>
@@ -426,7 +426,7 @@ batch &lt;- c(rep(&quot;GSE147507&quot;, 6), rep(&quot;GSE150962&quot;, 6))</cod
 </div>
 <div id="save-the-combined-dataset-as-rdata" class="section level2">
 <h2><span style="color:grey">1.4</span> Save the combined dataset as
-<code>Rdata</code></h2>
+Rdata</h2>
 <pre class="r"><code>save(rawdata_combined, group, batch, file = &quot;GEO.Rdata&quot;)</code></pre>
 </div>
 </div>
@@ -755,8 +755,16 @@ generate_heatmap(df_RUVs, df_RUVs_raw, group, batch)</code></pre>
                   pAdjustMethod = &quot;BH&quot;,
                   qvalueCutoff = 0.05,
                   readable = TRUE)
-  plot &lt;- dotplot(ego, showCategory=30, font.size = 5)
+  plot &lt;- dotplot(ego, showCategory = 20, font.size = 5)
   plot &lt;- plot + theme(axis.text.y = element_text(hjust = 1))
+  # Add average significance information
+  mean_pvalue &lt;- mean(ego$pvalue)
+  mean_qvalue &lt;- mean(ego$qvalue)
+  mean_apvalue &lt;- mean(ego$p.adjust)
+  summary_text &lt;- paste(&quot;Mean pvalue:&quot;, round(mean_pvalue, 4),&quot;
+                        \nMean qvalue:&quot;, round(mean_qvalue, 4),&quot;
+                        \nMean p.adjust:&quot;, round(mean_apvalue, 4), &quot;\n&quot;)
+  plot &lt;- plot + annotate(&quot;text&quot;, x = Inf, y = -Inf, label = summary_text, hjust = 1, vjust = 0)
   ggsave(paste0(&quot;GEO_GO_bubble_plot(&quot;, data_name, &quot;).png&quot;), plot = plot, width = 10, height = 6, units = &quot;in&quot;)
 }
 perform_GO_enrichment_analysis(df_raw_raw)

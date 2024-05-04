@@ -1,7 +1,7 @@
 ---
 title: "**Final year project**"
 subtitle: "*GEN data analysis*"
-author: "1931391"
+author: "TC-tea"
 date: "`r Sys.Date()`"
 date-format: "YYYY.MM.DD"
 output:
@@ -36,7 +36,7 @@ group <- c(rep("Normal", 2),
            rep("SARS-CoV-2 infection", 3))
 batch <- c(rep("GSE147507", 6), rep("GSE150962", 6))
 ```
-## [1.4]{style="color:grey"} Save the combined dataset as `Rdata`
+## [1.4]{style="color:grey"} Save the combined dataset as Rdata
 ```{r, results='hide', message=FALSE, warning=FALSE}
 save(rawdata_combined, group, batch, file = "GEN.Rdata")
 ```
@@ -351,8 +351,17 @@ perform_GO_enrichment_analysis <- function(Data) {
                   pAdjustMethod = "BH",
                   qvalueCutoff = 0.05,
                   readable = TRUE)
-  plot <- dotplot(ego, showCategory = 30, font.size = 5)
+  plot <- dotplot(ego, showCategory = 20, font.size = 5)
   plot <- plot + theme(axis.text.y = element_text(hjust = 1))
+
+  # Add average significance information
+  mean_pvalue <- mean(ego$pvalue)
+  mean_qvalue <- mean(ego$qvalue)
+  mean_apvalue <- mean(ego$p.adjust)
+  summary_text <- paste("Mean pvalue:", round(mean_pvalue, 4),"
+                        \nMean qvalue:", round(mean_qvalue, 4),"
+                        \nMean p.adjust:", round(mean_apvalue, 4), "\n")
+  plot <- plot + annotate("text", x = Inf, y = -Inf, label = summary_text, hjust = 1, vjust = 0)
   ggsave(paste0("GEN_GO_bubble_plot(", data_name, ").png"), plot = plot, width = 10, height = 6, units = "in")
 }
 perform_GO_enrichment_analysis(df_raw_raw)
