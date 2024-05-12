@@ -2,4 +2,6 @@
 - `GEN database` folder is used for process the analysis of the datasets from Gene Expression Nebulas.
 - `GEO database` folder is used for process the analysis of the datasets from Gene Expression Omnibus.
 
-![](./FYP.jpg){width=60%}
+<p align="center">
+  <img src="./FYP.jpg" alt="" />
+</p>
