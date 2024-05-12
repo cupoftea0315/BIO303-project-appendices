@@ -254,10 +254,10 @@ generate_volcano_plot <- function(Data, group) {
     geom_vline(xintercept = 3, linetype = "dashed") +
     geom_vline(xintercept = -3, linetype = "dashed") +
     geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
-    geom_label_repel(data=subset(Data, group!="Not sig"),
-                     aes(label=gene_name), 
-                     box.padding = unit(0.35, "lines"),
-                     size = 2) +
+    # geom_label_repel(data=subset(Data, group!="Not sig"),
+    #                  aes(label=gene_name), 
+    #                  box.padding = unit(0.35, "lines"),
+    #                  size = 2) +
     labs(title = data_name, y=expression(-log10), x="log(Fold Change)") + 
     theme_test()
   ggsave(paste0("GEO_Volcano_plot(", data_name, ").png"), plot = volcano_plot)
@@ -364,13 +364,13 @@ perform_GO_enrichment_analysis <- function(Data) {
   plot <- dotplot(ego, showCategory = 20, font.size = 5)
   plot <- plot + theme(axis.text.y = element_text(hjust = 1))
   # Add average significance information
-  mean_pvalue <- mean(ego$pvalue)
-  mean_qvalue <- mean(ego$qvalue)
-  mean_apvalue <- mean(ego$p.adjust)
-  summary_text <- paste("Mean pvalue:", round(mean_pvalue, 4),"
-                        \nMean qvalue:", round(mean_qvalue, 4),"
-                        \nMean p.adjust:", round(mean_apvalue, 4), "\n")
-  plot <- plot + annotate("text", x = Inf, y = -Inf, label = summary_text, hjust = 1, vjust = 0)
+  # mean_pvalue <- mean(ego$pvalue)
+  # mean_qvalue <- mean(ego$qvalue)
+  # mean_apvalue <- mean(ego$p.adjust)
+  # summary_text <- paste("Mean pvalue:", round(mean_pvalue, 4),"
+  #                       \nMean qvalue:", round(mean_qvalue, 4),"
+  #                       \nMean p.adjust:", round(mean_apvalue, 4), "\n")
+  # plot <- plot + annotate("text", x = Inf, y = -Inf, label = summary_text, hjust = 1, vjust = 0)
   ggsave(paste0("GEO_GO_bubble_plot(", data_name, ").png"), plot = plot, width = 10, height = 6, units = "in")
 }
 perform_GO_enrichment_analysis(df_raw_raw)

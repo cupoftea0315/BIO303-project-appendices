@@ -1,0 +1,19 @@
+ribonucleoprotein complex biogenesis
+histone modification
+proteasome-mediated ubiquitin-dependent protein catabolic process
+mitotic cell cycle phase transition
+establishment of protein localization to organelle
+ncRNA processing establishment of organelle localization
+peptidyl-lysine modification
+non-membrane-bounded organelle assembly
+regulation of autophagy
+nucleocytoplasmic transport
+nuclear transport
+regulation of intracellular transport
+mitotic nuclear division
+macroautophagy
+ribosome biogenesis
+protein localization to nucleus
+Golgi vesicle transport
+DNA replication
+rRNA processing

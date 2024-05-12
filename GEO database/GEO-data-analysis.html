@@ -11,7 +11,7 @@
 
 <meta name="author" content="TC-tea" />
 
-<meta name="date" content="2024-05-03" />
+<meta name="date" content="2024-05-12" />
 
 <title>Final year project</title>
 
@@ -353,7 +353,7 @@ display: none;
 <h1 class="title toc-ignore"><strong>Final year project</strong></h1>
 <h3 class="subtitle"><em>GEO data analysis</em></h3>
 <h4 class="author">TC-tea</h4>
-<h4 class="date">2024-05-03</h4>
+<h4 class="date">2024-05-12</h4>
 
 </div>
 
@@ -647,10 +647,10 @@ df_ComBatseq &lt;- run_DE_analysis_with_gene_matrix(rawdata_combined_ComBatseq, 
     geom_vline(xintercept = 3, linetype = &quot;dashed&quot;) +
     geom_vline(xintercept = -3, linetype = &quot;dashed&quot;) +
     geom_hline(yintercept = -log10(0.05), linetype = &quot;dashed&quot;) +
-    geom_label_repel(data=subset(Data, group!=&quot;Not sig&quot;),
-                     aes(label=gene_name), 
-                     box.padding = unit(0.35, &quot;lines&quot;),
-                     size = 2) +
+    # geom_label_repel(data=subset(Data, group!=&quot;Not sig&quot;),
+    #                  aes(label=gene_name), 
+    #                  box.padding = unit(0.35, &quot;lines&quot;),
+    #                  size = 2) +
     labs(title = data_name, y=expression(-log10), x=&quot;log(Fold Change)&quot;) + 
     theme_test()
   ggsave(paste0(&quot;GEO_Volcano_plot(&quot;, data_name, &quot;).png&quot;), plot = volcano_plot)
@@ -758,13 +758,13 @@ generate_heatmap(df_RUVs, df_RUVs_raw, group, batch)</code></pre>
   plot &lt;- dotplot(ego, showCategory = 20, font.size = 5)
   plot &lt;- plot + theme(axis.text.y = element_text(hjust = 1))
   # Add average significance information
-  mean_pvalue &lt;- mean(ego$pvalue)
-  mean_qvalue &lt;- mean(ego$qvalue)
-  mean_apvalue &lt;- mean(ego$p.adjust)
-  summary_text &lt;- paste(&quot;Mean pvalue:&quot;, round(mean_pvalue, 4),&quot;
-                        \nMean qvalue:&quot;, round(mean_qvalue, 4),&quot;
-                        \nMean p.adjust:&quot;, round(mean_apvalue, 4), &quot;\n&quot;)
-  plot &lt;- plot + annotate(&quot;text&quot;, x = Inf, y = -Inf, label = summary_text, hjust = 1, vjust = 0)
+  # mean_pvalue &lt;- mean(ego$pvalue)
+  # mean_qvalue &lt;- mean(ego$qvalue)
+  # mean_apvalue &lt;- mean(ego$p.adjust)
+  # summary_text &lt;- paste(&quot;Mean pvalue:&quot;, round(mean_pvalue, 4),&quot;
+  #                       \nMean qvalue:&quot;, round(mean_qvalue, 4),&quot;
+  #                       \nMean p.adjust:&quot;, round(mean_apvalue, 4), &quot;\n&quot;)
+  # plot &lt;- plot + annotate(&quot;text&quot;, x = Inf, y = -Inf, label = summary_text, hjust = 1, vjust = 0)
   ggsave(paste0(&quot;GEO_GO_bubble_plot(&quot;, data_name, &quot;).png&quot;), plot = plot, width = 10, height = 6, units = &quot;in&quot;)
 }
 perform_GO_enrichment_analysis(df_raw_raw)
